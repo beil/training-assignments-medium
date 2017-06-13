@@ -121,22 +121,7 @@ public class BasicConformityMonkeyContext extends BasicSimianArmyContext impleme
         boolean eurekaEnabled = configuration().getBoolOrElse("simianarmy.conformity.Eureka.enabled", false);
 
         if (eurekaEnabled) {
-            LOGGER.info("Initializing Discovery client.");
-            Injector injector = Guice.createInjector(new EurekaModule());
-            DiscoveryClient discoveryClient = injector.getInstance(DiscoveryClient.class);
-            ConformityEurekaClient conformityEurekaClient = new BasicConformityEurekaClient(discoveryClient);
-            if (configuration().getBoolOrElse(
-                    "simianarmy.conformity.rule.InstanceIsHealthyInEureka.enabled", false)) {
-                ruleEngine.addRule(new InstanceIsHealthyInEureka(conformityEurekaClient));
-            }
-            if (configuration().getBoolOrElse(
-                    "simianarmy.conformity.rule.InstanceHasHealthCheckUrl.enabled", false)) {
-                ruleEngine.addRule(new InstanceHasHealthCheckUrl(conformityEurekaClient));
-            }
-            if (configuration().getBoolOrElse(
-                    "simianarmy.conformity.rule.InstanceHasStatusUrl.enabled", false)) {
-                ruleEngine.addRule(new InstanceHasStatusUrl(conformityEurekaClient));
-            }
+            initializeDiscoveryClient();
         } else {
             LOGGER.info("Discovery/Eureka is not enabled, the conformity rules that need Eureka are not added.");
         }
@@ -189,6 +174,25 @@ public class BasicConformityMonkeyContext extends BasicSimianArmyContext impleme
         sourceEmail = configuration().getStrOrElse("simianarmy.conformity.notification.sourceEmail", null);
         conformityEmailBuilder = new BasicConformityEmailBuilder();
         emailNotifier = new ConformityEmailNotifier(getConformityEmailNotifierContext());
+    }
+
+    private void initializeDiscoveryClient() {
+        LOGGER.info("Initializing Discovery client.");
+        Injector injector = Guice.createInjector(new EurekaModule());
+        DiscoveryClient discoveryClient = injector.getInstance(DiscoveryClient.class);
+        ConformityEurekaClient conformityEurekaClient = new BasicConformityEurekaClient(discoveryClient);
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.InstanceIsHealthyInEureka.enabled", false)) {
+            ruleEngine.addRule(new InstanceIsHealthyInEureka(conformityEurekaClient));
+        }
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.InstanceHasHealthCheckUrl.enabled", false)) {
+            ruleEngine.addRule(new InstanceHasHealthCheckUrl(conformityEurekaClient));
+        }
+        if (configuration().getBoolOrElse(
+                "simianarmy.conformity.rule.InstanceHasStatusUrl.enabled", false)) {
+            ruleEngine.addRule(new InstanceHasStatusUrl(conformityEurekaClient));
+        }
     }
 
     public ConformityEmailNotifier.Context getConformityEmailNotifierContext() {
