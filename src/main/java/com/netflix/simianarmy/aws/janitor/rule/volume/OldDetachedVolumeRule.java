@@ -22,90 +22,48 @@ import java.util.Map;
 
 import org.apache.commons.lang.Validate;
 import org.joda.time.DateTime;
-import org.joda.time.format.DateTimeFormat;
-import org.joda.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import com.netflix.simianarmy.MonkeyCalendar;
 import com.netflix.simianarmy.Resource;
 import com.netflix.simianarmy.aws.AWSResource;
 import com.netflix.simianarmy.aws.janitor.VolumeTaggingMonkey;
 import com.netflix.simianarmy.janitor.JanitorMonkey;
-import com.netflix.simianarmy.janitor.Rule;
 
 /**
  * The rule is for checking whether an EBS volume is detached for more than
  * certain days. The rule mostly relies on tags on the volume to decide if
  * the volume should be marked.
  */
-public class OldDetachedVolumeRule implements Rule {
+public class OldDetachedVolumeRule extends AbstractVolumeRule {
 
-    /** The Constant LOGGER. */
+    /**
+     * The Constant LOGGER.
+     */
     private static final Logger LOGGER = LoggerFactory.getLogger(OldDetachedVolumeRule.class);
 
-    private final MonkeyCalendar calendar;
-
     private final int detachDaysThreshold;
-
-    private final int retentionDays;
-
-    /** The date format used to print or parse the user specified termination date. **/
-    public static final DateTimeFormatter TERMINATION_DATE_FORMATTER = DateTimeFormat.forPattern("yyyy-MM-dd");
-
 
     /**
      * Constructor.
      *
-     * @param calendar
-     *            The calendar used to calculate the termination time
-     * @param detachDaysThreshold
-     *            The number of days that a volume is considered as cleanup candidate since it is detached
-     * @param retentionDays
-     *            The number of days that the volume is retained before being terminated after being marked
-     *            as cleanup candidate
+     * @param calendar            The calendar used to calculate the termination time
+     * @param detachDaysThreshold The number of days that a volume is considered as cleanup candidate since it is detached
+     * @param retentionDays       The number of days that the volume is retained before being terminated after being marked
+     *                            as cleanup candidate
      */
     public OldDetachedVolumeRule(MonkeyCalendar calendar, int detachDaysThreshold, int retentionDays) {
-        Validate.notNull(calendar);
+        super(calendar, retentionDays);
         Validate.isTrue(detachDaysThreshold >= 0);
-        Validate.isTrue(retentionDays >= 0);
-        this.calendar = calendar;
         this.detachDaysThreshold = detachDaysThreshold;
-        this.retentionDays = retentionDays;
     }
 
     @Override
-    public boolean isValid(Resource resource) {
-        Validate.notNull(resource);
-        if (!resource.getResourceType().name().equals("EBS_VOLUME")) {
-            return true;
-        }
-        if (!"available".equals(((AWSResource) resource).getAWSResourceState())) {
-            return true;
-        }
-        String janitorTag = resource.getTag(JanitorMonkey.JANITOR_TAG);
-        if (janitorTag != null) {
-            if ("donotmark".equals(janitorTag)) {
-                LOGGER.info(String.format("The volume %s is tagged as not handled by Janitor",
-                        resource.getId()));
-                return true;
-            }
-            try {
-                // Owners can tag the volume with a termination date in the "janitor" tag.
-                Date userSpecifiedDate = new Date(
-                        TERMINATION_DATE_FORMATTER.parseDateTime(janitorTag).getMillis());
-                resource.setExpectedTerminationTime(userSpecifiedDate);
-                resource.setTerminationReason(String.format("User specified termination date %s", janitorTag));
-                return false;
-            } catch (Exception e) {
-                LOGGER.error(String.format("The janitor tag is not a user specified date: %s", janitorTag));
-            }
-        }
-
+    public boolean validateInternal(Resource resource) {
         String janitorMetaTag = resource.getTag(JanitorMonkey.JANITOR_META_TAG);
         if (janitorMetaTag == null) {
             LOGGER.info(String.format("Volume %s is not tagged with the Janitor meta information, ignore.",
-                    resource.getId()));
+                resource.getId()));
             return true;
         }
 
@@ -119,7 +77,7 @@ public class OldDetachedVolumeRule implements Rule {
             detachTime = AWSResource.DATE_FORMATTER.parseDateTime(detachTimeTag);
         } catch (Exception e) {
             LOGGER.error(String.format("Detach time in the JANITOR_META tag of %s is not in the valid format: %s",
-                    resource.getId(), detachTime));
+                resource.getId(), detachTime));
             return true;
         }
         DateTime now = new DateTime(calendar.now().getTimeInMillis());
@@ -128,10 +86,10 @@ public class OldDetachedVolumeRule implements Rule {
                 Date terminationTime = calendar.getBusinessDay(new Date(now.getMillis()), retentionDays);
                 resource.setExpectedTerminationTime(terminationTime);
                 resource.setTerminationReason(String.format("Volume not attached for %d days",
-                        detachDaysThreshold + retentionDays));
+                    detachDaysThreshold + retentionDays));
                 LOGGER.info(String.format(
-                        "Volume %s is marked to be cleaned at %s as it is detached for more than %d days",
-                        resource.getId(), resource.getExpectedTerminationTime(), detachDaysThreshold));
+                    "Volume %s is marked to be cleaned at %s as it is detached for more than %d days",
+                    resource.getId(), resource.getExpectedTerminationTime(), detachDaysThreshold));
             } else {
                 LOGGER.info(String.format("Resource %s is already marked.", resource.getId()));
             }
